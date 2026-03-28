@@ -273,7 +273,7 @@ export async function runNoteSync(body: SyncRequestBody): Promise<SyncResponseBo
     changes,
     summary: {
       applied,
-      skipped,
+      skipped, 
     },
   };
 }
