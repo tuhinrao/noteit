@@ -121,10 +121,9 @@ async function updateSyncedNote(change: SyncNoteChange, syncTime: string): Promi
       is_pinned = $4,
       is_archived = $5,
       sync_status = 'synced',
-      created_at = $6,
-      updated_at = $7,
-      last_synced_at = $8,
-      deleted_at = $9
+      updated_at = $6,
+      last_synced_at = $7,
+      deleted_at = $8
     WHERE client_id = $1
     `,
     [
@@ -133,7 +132,6 @@ async function updateSyncedNote(change: SyncNoteChange, syncTime: string): Promi
       change.body,
       change.isPinned,
       change.isArchived,
-      change.createdAt,
       change.updatedAt,
       syncTime,
       change.deletedAt,
@@ -228,33 +226,44 @@ export async function runNoteSync(body: SyncRequestBody): Promise<SyncResponseBo
   const applied: string[] = [];
   const skipped: string[] = [];
 
-  for (const rawChange of body.changes) {
-    const change = normalizeChange(rawChange);
-    const existing = await getNoteByClientIdIncludingDeleted(change.clientId);
+  await db.query("BEGIN");
 
-    if (!existing) {
-      // New record from client.
-      // If it is already deleted before ever reaching server, we can skip it.
-      if (change.deletedAt) {
+  try {
+    for (const rawChange of body.changes) {
+      const change = normalizeChange(rawChange);
+      const existing = await getNoteByClientIdIncludingDeleted(change.clientId);
+
+      if (!existing) {
+        if (change.deletedAt) {
+          skipped.push(change.clientId);
+          continue;
+        }
+
+        await insertSyncedNote(change, syncTime);
+        applied.push(change.clientId);
+        continue;
+      }
+
+      if (existing.deletedAt && !change.deletedAt) {
         skipped.push(change.clientId);
         continue;
       }
 
-      await insertSyncedNote(change, syncTime);
-      applied.push(change.clientId);
-      continue;
+      const serverUpdatedAt = new Date(existing.updatedAt).getTime();
+      const clientUpdatedAt = new Date(change.updatedAt).getTime();
+
+      if (clientUpdatedAt >= serverUpdatedAt) {
+        await updateSyncedNote(change, syncTime);
+        applied.push(change.clientId);
+      } else {
+        skipped.push(change.clientId);
+      }
     }
 
-    const serverUpdatedAt = new Date(existing.updatedAt).getTime();
-    const clientUpdatedAt = new Date(change.updatedAt).getTime();
-
-    // Pilot rule: last write wins by updatedAt.
-    if (clientUpdatedAt >= serverUpdatedAt) {
-      await updateSyncedNote(change, syncTime);
-      applied.push(change.clientId);
-    } else {
-      skipped.push(change.clientId);
-    }
+    await db.query("COMMIT");
+  } catch (error) {
+    await db.query("ROLLBACK");
+    throw error;
   }
 
   const changes = await getServerChangesSince(body.lastSyncedAt ?? null);
