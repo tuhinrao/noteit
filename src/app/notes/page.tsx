@@ -56,6 +56,7 @@ export default function NotesPage() {
       }
 
       const data = await response.json();
+
       const visibleNotes =
         viewMode === "archived"
           ? data.notes.filter((note: Note) => note.isArchived)
@@ -74,9 +75,7 @@ export default function NotesPage() {
   }, [fetchNotes]);
 
   async function confirmDelete() {
-    if (deleteTargetId === null) {
-      return;
-    }
+    if (!deleteTargetId) return;
 
     setIsDeleting(true);
     setErrorMessage("");
@@ -100,80 +99,43 @@ export default function NotesPage() {
   }
 
   async function handleTogglePin(note: Note) {
-    const response = await fetch(`/api/notes/${note.id}`, {
+    await fetch(`/api/notes/${note.clientId}`, {
       method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        isPinned: !note.isPinned,
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isPinned: !note.isPinned }),
     });
-
-    if (!response.ok) {
-      throw new Error("Failed to update note.");
-    }
 
     await fetchNotes();
   }
 
   async function handleToggleArchive(note: Note) {
-    const response = await fetch(`/api/notes/${note.id}`, {
+    await fetch(`/api/notes/${note.clientId}`, {
       method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        isArchived: !note.isArchived,
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isArchived: !note.isArchived }),
     });
-
-    if (!response.ok) {
-      throw new Error("Failed to update note.");
-    }
 
     await fetchNotes();
   }
 
   const emptyState = useMemo(() => {
     if (searchQuery.trim()) {
-      return {
-        title: "No matching notes",
-        description: "Try a different search term.",
-      };
+      return { title: "No matching notes", description: "Try a different search term." };
     }
 
     if (viewMode === "archived") {
-      return {
-        title: "No archived notes",
-        description: "Archived notes will appear here.",
-      };
+      return { title: "No archived notes", description: "Archived notes will appear here." };
     }
 
-    return {
-      title: "No notes yet",
-      description: "Create your first note to get started.",
-    };
+    return { title: "No notes yet", description: "Create your first note." };
   }, [searchQuery, viewMode]);
 
   return (
     <AppShell>
       <Stack spacing={3}>
-        <Paper
-          elevation={0}
-          sx={{
-            p: { xs: 2, sm: 3 },
-            border: "1px solid",
-            borderColor: "divider",
-          }}
-        >
+        <Paper sx={{ p: 3, border: "1px solid", borderColor: "divider" }}>
           <Stack spacing={2}>
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              justifyContent="space-between"
-              alignItems={{ xs: "stretch", sm: "center" }}
-              spacing={2}
-            >
+            <Stack direction="row" justifyContent="space-between">
               <Box>
                 <Typography variant="h4">Notes</Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -181,13 +143,7 @@ export default function NotesPage() {
                 </Typography>
               </Box>
 
-              <Button
-                component={Link}
-                href="/notes/new"
-                variant="contained"
-                startIcon={<AddIcon />}
-                fullWidth={false}
-              >
+              <Button component={Link} href="/notes/new" variant="contained" startIcon={<AddIcon />}>
                 New Note
               </Button>
             </Stack>
@@ -201,13 +157,8 @@ export default function NotesPage() {
             <ToggleButtonGroup
               value={viewMode}
               exclusive
-              onChange={(_, value: NotesViewMode | null) => {
-                if (value) {
-                  setViewMode(value);
-                }
-              }}
+              onChange={(_, value) => value && setViewMode(value)}
               size="small"
-              sx={{ flexWrap: "wrap" }}
             >
               <ToggleButton value="active">
                 <NotesIcon sx={{ mr: 1 }} />
@@ -221,39 +172,31 @@ export default function NotesPage() {
           </Stack>
         </Paper>
 
-        {errorMessage ? <Alert severity="error">{errorMessage}</Alert> : null}
+        {errorMessage && <Alert severity="error">{errorMessage}</Alert>}
 
         {isLoading ? (
           <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
             <CircularProgress />
           </Box>
         ) : notes.length === 0 ? (
-          <EmptyNotesState title={emptyState.title} description={emptyState.description} />
+          <EmptyNotesState {...emptyState} />
         ) : (
           <NoteList
             notes={notes}
-            onDelete={(clientId) => {
-              setDeleteTargetId(clientId);
-            }}
-            onTogglePin={(note) => {
-              void handleTogglePin(note);
-            }}
-            onToggleArchive={(note) => {
-              void handleToggleArchive(note);
-            }}
+            onDelete={(clientId) => setDeleteTargetId(clientId)}
+            onTogglePin={handleTogglePin}
+            onToggleArchive={handleToggleArchive}
           />
         )}
       </Stack>
 
       <ConfirmDialog
-        open={deleteTargetId !== null}
+        open={!!deleteTargetId}
         title="Delete note?"
         description="This action cannot be undone."
         confirmText="Delete"
         cancelText="Cancel"
-        onConfirm={() => {
-          void confirmDelete();
-        }}
+        onConfirm={confirmDelete}
         onCancel={() => setDeleteTargetId(null)}
         isLoading={isDeleting}
       />

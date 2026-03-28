@@ -95,32 +95,19 @@ export async function createNote(input: CreateNoteInput): Promise<Note> {
       is_archived,
       sync_status,
       created_at,
-      updated_at,
-      last_synced_at
+      updated_at
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    RETURNING
-      id,
-      client_id,
-      title,
-      body,
-      is_pinned,
-      is_archived,
-      sync_status,
-      created_at,
-      updated_at,
-      last_synced_at,
-      deleted_at
+    VALUES ($1,$2,$3,$4,$5,$6,$7)
+    RETURNING *
     `,
     [
       newNote.title,
       newNote.body,
       newNote.isPinned,
       newNote.isArchived,
-      "synced",
+      "pending_create", // 🔥 changed
       newNote.createdAt,
       newNote.updatedAt,
-      new Date().toISOString(),
     ]
   );
 
@@ -132,10 +119,7 @@ export async function updateNoteByClientId(
   input: UpdateNoteInput
 ): Promise<Note | null> {
   const existingNote = await getNoteByClientId(clientId);
-
-  if (!existingNote) {
-    return null;
-  }
+  if (!existingNote) return null;
 
   const updatedNote = mergeNoteUpdate(existingNote, input);
 
@@ -148,22 +132,10 @@ export async function updateNoteByClientId(
       is_pinned = $4,
       is_archived = $5,
       sync_status = $6,
-      updated_at = $7,
-      last_synced_at = $8
+      updated_at = $7
     WHERE client_id = $1
       AND deleted_at IS NULL
-    RETURNING
-      id,
-      client_id,
-      title,
-      body,
-      is_pinned,
-      is_archived,
-      sync_status,
-      created_at,
-      updated_at,
-      last_synced_at,
-      deleted_at
+    RETURNING *
     `,
     [
       clientId,
@@ -171,23 +143,23 @@ export async function updateNoteByClientId(
       updatedNote.body,
       updatedNote.isPinned,
       updatedNote.isArchived,
-      "synced",
+      updatedNote.syncStatus === "pending_create"
+        ? "pending_create"
+        : "pending_update",
       updatedNote.updatedAt,
-      new Date().toISOString(),
     ]
   );
 
-  if (result.rows.length === 0) {
-    return null;
-  }
-
-  return mapRowToNote(result.rows[0]);
+  return result.rows.length ? mapRowToNote(result.rows[0]) : null;
 }
 
 export async function deleteNoteByClientId(clientId: string): Promise<boolean> {
   const result = await db.query(
     `
-    DELETE FROM notes
+    UPDATE notes
+    SET
+      deleted_at = NOW(),
+      sync_status = 'pending_delete'
     WHERE client_id = $1
       AND deleted_at IS NULL
     `,
